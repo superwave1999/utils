@@ -1,0 +1,28 @@
+#!/bin/bash
+
+set -e
+
+EXCLUDE_PACKAGES=(
+    "docker.io"
+    "docker-ce"
+    "docker-ce-cli"
+    "containerd"
+    "runc"
+    "libc6"
+    "libc6-dev"
+    "linux-image"
+    "linux-headers"
+)
+
+# Hold the excluded packages while upgrade runs
+for pkg in "${EXCLUDE_PACKAGES[@]}"; do
+    sudo apt-mark hold "$pkg" || true
+done
+
+sudo apt update
+sudo apt upgrade -y
+
+# Unhold the excluded packages
+for pkg in "${EXCLUDE_PACKAGES[@]}"; do
+    sudo apt-mark unhold "$pkg" || true
+done
