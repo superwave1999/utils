@@ -1,0 +1,8 @@
+#!/bin/bash
+
+for dev in /sys/bus/pci/devices/*; do
+  dev_name=$(basename "$dev")
+  pm_status=$(cat "$dev/power/control" 2>/dev/null || echo "N/A")
+  desc=$(lspci -s "$dev_name" 2>/dev/null)
+  printf "%-20s %-10s %s\n" "$dev_name" "$pm_status" "$desc"
+done

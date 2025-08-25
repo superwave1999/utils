@@ -1,0 +1,6 @@
+#!/bin/bash
+
+for host in /sys/class/scsi_host/host*/link_power_management_policy; do
+  echo -n "$host: "
+  cat "$host"
+done
