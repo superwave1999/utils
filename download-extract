@@ -1,0 +1,63 @@
+#!/bin/bash
+set -e
+
+[ "$#" -lt 1 ] && { echo "Usage: $0 <url1> [url2 ...]"; exit 1; }
+
+# URL-decode helper
+urldecode() {
+    local url_encoded="${1//+/ }"
+    printf '%b' "${url_encoded//%/\\x}"
+}
+
+# Check required tool for a given extension
+check_dependency_for_extension() {
+    case "$1" in
+        *.zip)   command -v unzip &>/dev/null || { echo "Error: 'unzip' not found."; exit 1; } ;;
+        *.tar.gz|*.tgz|*.tar) command -v tar &>/dev/null || { echo "Error: 'tar' not found."; exit 1; } ;;
+        *.gz)    command -v gunzip &>/dev/null || { echo "Error: 'gunzip' not found."; exit 1; } ;;
+        *.rar)   command -v unrar &>/dev/null || { echo "Error: 'unrar' not found."; exit 1; } ;;
+        *.7z)    command -v 7z &>/dev/null || { echo "Error: '7z' not found."; exit 1; } ;;
+    esac
+}
+
+# Extraction function
+extract_file() {
+    local file="$1"
+    case "$file" in
+        *.zip)    unzip -q "$file" ;;
+        *.tar.gz|*.tgz) tar -xzf "$file" ;;
+        *.tar)    tar -xf "$file" ;;
+        *.gz)     gunzip -k "$file" ;;  # -k keeps original .gz
+        *.rar)    unrar x -o+ "$file" ;;
+        *.7z)     7z x "$file" ;;
+        *)        echo "Downloaded '$file'. No extraction needed." ; return ;;
+    esac
+
+    rm -f "$file"
+    echo "Extracted and removed '$file'"
+}
+
+# Main loop
+for URL in "$@"; do
+    echo "Processing: $URL"
+
+    # Decode filename from URL
+    ENCODED_NAME=$(basename "$URL")
+    FILE=$(urldecode "$ENCODED_NAME")
+
+    # Precheck extraction dependency
+    check_dependency_for_extension "$FILE"
+
+    # Download
+    if command -v curl &>/dev/null; then
+        curl -L "$URL" -o "$FILE"
+    elif command -v wget &>/dev/null; then
+        wget "$URL" -O "$FILE"
+    else
+        echo "Error: curl or wget is required." >&2
+        exit 1
+    fi
+
+    # Extract
+    extract_file "$FILE"
+done
