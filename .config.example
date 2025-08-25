@@ -1,0 +1,4 @@
+export AWS_ACCESS_KEY_ID=XXXXXXXXXXXXXXX
+export AWS_SECRET_ACCESS_KEY=XXXXXXXXXXXXXXX
+export RESTIC_REPOSITORY="s3:s3.your-region-001.backblazeb2.com/my-backup-bucket"
+export RESTIC_PASSWORD_FILE=/home/user/.restic-pass
