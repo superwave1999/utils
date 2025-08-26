@@ -1,0 +1,119 @@
+#!/bin/bash
+# Usage examples:
+#
+#   Restore everything from tag "daily" into /storage
+#     ./restore.sh --target /storage daily
+#
+#   Restore only /etc and /var/www from tag "daily" into /
+#     ./restore.sh --target / daily /etc /var/www
+#
+#   Preview restore (dry run, no changes)
+#     ./restore.sh -n --target /storage daily /etc
+#
+#   Restore into /storage, cleaning target paths first
+#     ./restore.sh --clean --target /storage daily /etc /var/www
+#
+#   List available directories in snapshot tagged "daily"
+#     ./restore.sh daily
+
+set -euo pipefail
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "This script requires root privileges. Attempting to escalate..."
+    sudo "$0" "$@"
+    exit 0
+fi
+
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+source "$SCRIPT_DIR/.config"
+
+echo "Checking local /storage mount..."
+if ! mountpoint -q -- /storage; then
+    echo "ERROR: /storage is not a valid mount point"
+    exit 1
+fi
+
+DRY_RUN=0
+CLEAN=0
+RESTORE_TARGET=""
+ARGS=()
+
+for bin in restic; do
+    command -v "$bin" >/dev/null 2>&1 || { echo "Error: $bin not found"; exit 1; }
+done
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -n|--dry-run)
+            DRY_RUN=1
+            shift
+            ;;
+        --clean)
+            CLEAN=1
+            shift
+            ;;
+        --target)
+            RESTORE_TARGET="$2"
+            shift 2
+            ;;
+        *)
+            ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+if [[ ${#ARGS[@]} -lt 1 ]]; then
+    echo "Usage: $0 [-n|--dry-run] [--clean] [--target DIR] <tag> [paths...]"
+    exit 1
+fi
+
+TAG="${ARGS[0]}"
+PATHS=("${ARGS[@]:1}")
+
+RESTORE_TARGET="${RESTORE_TARGET:-/}"
+if [[ "$RESTORE_TARGET" == "/" ]]; then
+    echo "Refusing to restore directly into / (root). Too risky!"
+    exit 1
+fi
+
+if ! restic snapshots --tag "$TAG" >/dev/null 2>&1; then
+    echo "Tag '$TAG' not found in repository"
+    exit 1
+fi
+
+echo "Caching snapshot listing for tag $TAG ..."
+SNAPSHOT_LIST=$(restic ls latest --tag "$TAG")
+
+if [[ ${#PATHS[@]} -eq 0 ]]; then
+    echo "Available directories/files in snapshot ($TAG), two levels deep:"
+    echo "$SNAPSHOT_LIST" | awk -F/ 'NF<=3 {print}' | sort
+    exit 0
+fi
+
+if [[ $DRY_RUN -eq 1 ]]; then
+    echo "Dry run: would restore from tag $TAG into $RESTORE_TARGET"
+    [[ $CLEAN -eq 1 ]] && echo "  (would clean target dirs before restoring)"
+    for p in "${PATHS[@]}"; do
+        echo "  - $p"
+    done
+    exit 0
+fi
+
+if [[ $CLEAN -eq 1 ]]; then
+    echo "Cleaning target dirs before restore..."
+    for p in "${PATHS[@]}"; do
+        TARGET_PATH="$RESTORE_TARGET$p"
+        if [[ -d "$TARGET_PATH" || -f "$TARGET_PATH" ]]; then
+            echo "  rm -rf $TARGET_PATH"
+            rm -rf "$TARGET_PATH"
+        fi
+    done
+fi
+
+INCLUDE_ARGS=()
+for p in "${PATHS[@]}"; do
+    INCLUDE_ARGS+=(--include "$p")
+done
+
+restic restore latest --tag "$TAG" --target "$RESTORE_TARGET" "${INCLUDE_ARGS[@]}"
