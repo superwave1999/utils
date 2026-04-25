@@ -1,0 +1,49 @@
+#!/bin/bash
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "This script requires root privileges. Attempting to escalate..."
+    sudo "$0" "$@"
+    exit 0
+fi
+
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+source "$SCRIPT_DIR/.config"
+
+# Check hdd
+echo "Checking local /storage mount..."
+if ! mountpoint -q -- /storage; then
+    echo "ERROR: /storage is not a valid mount point"
+    exit 1
+fi
+
+echo "Pruning old snapshots"
+prune_zfs_snapshots() {
+    local dataset="$1"
+    local keep="${2:-10}"
+
+    local snapshots
+    snapshots=$(zfs list -t snapshot -H -p -o name,creation "$dataset" 2>/dev/null | sort -k2 -rn | awk '{print $1}')
+    if [ -z "$snapshots" ]; then
+        echo "  No snapshots found for $dataset"
+        return
+    fi
+
+    local count
+    count=$(wc -l <<< "$snapshots")
+
+    if (( count <= keep )); then
+        echo "  $dataset: nothing to prune ($count snapshots, keeping $keep)"
+        return
+    fi
+
+    echo "$snapshots" | tail -n "+$((keep + 1))" | while read -r name; do
+        echo "  PRUNE  $name"
+        zfs destroy "$name"
+    done
+
+    echo "  $dataset: pruned $((count - keep)) snapshot(s), kept $keep"
+}
+
+prune_zfs_snapshots zroot 10
+prune_zfs_snapshots datapool 10
+echo "ZFS pruned"

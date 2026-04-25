@@ -35,11 +35,4 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-echo "Pruning old backups"
-restic forget --prune --keep-daily 7 --keep-weekly 4 --keep-monthly 12 --keep-within 1y
-if [ $? -ne 0 ]; then
-    echo "Prune failed at $(date)"
-    exit 1
-fi
-
 echo "Backup completed successfully at $(date) - please reboot"
