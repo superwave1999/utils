@@ -18,30 +18,36 @@ fi
 
 echo "Pruning old snapshots"
 prune_zfs_snapshots() {
-    local dataset="$1"
+    local target_pool_or_ds="$1"
     local keep="${2:-10}"
 
-    local snapshots
-    snapshots=$(zfs list -t snapshot -H -p -o name,creation "$dataset" 2>/dev/null | sort -k2 -rn | awk '{print $1}')
-    if [ -z "$snapshots" ]; then
-        echo "  No snapshots found for $dataset"
-        return
-    fi
+    # Get all datasets under the target (including the root dataset itself)
+    mapfile -t datasets < <(zfs list -H -o name -r "$target_pool_or_ds")
 
-    local count
-    count=$(wc -l <<< "$snapshots")
+    for ds in "${datasets[@]}"; do
+        # Fetch snapshots for this specific dataset only (-depth 1 avoids child mixing)
+        local snapshots
+        snapshots=$(zfs list -t snapshot -d 1 -H -p -o name,creation "$ds" 2>/dev/null | sort -k2 -rn | awk '{print $1}')
 
-    if (( count <= keep )); then
-        echo "  $dataset: nothing to prune ($count snapshots, keeping $keep)"
-        return
-    fi
+        if [ -z "$snapshots" ]; then
+            continue
+        fi
 
-    echo "$snapshots" | tail -n "+$((keep + 1))" | while read -r name; do
-        echo "  PRUNE  $name"
-        zfs destroy "$name"
+        local count
+        count=$(wc -l <<< "$snapshots")
+
+        if (( count <= keep )); then
+            echo "  $ds: nothing to prune ($count snapshots, keeping $keep)"
+            continue
+        fi
+
+        echo "$snapshots" | tail -n "+$((keep + 1))" | while read -r name; do
+            echo "  PRUNE  $name"
+            zfs destroy "$name"
+        done
+
+        echo "  $ds: pruned $((count - keep)) snapshot(s), kept $keep"
     done
-
-    echo "  $dataset: pruned $((count - keep)) snapshot(s), kept $keep"
 }
 
 prune_zfs_snapshots zroot 10
